@@ -1,16 +1,13 @@
 import os
 from flask import Flask, render_template, request, session, jsonify
 from game_data import gameData
-from models import db, Player, GameProgress, Item, PlayerItem, QuickSlot, CraftingRecipe, Dungeon, Monster, Guild, Quest # Added imports for Dungeon and Monster
+from models import db, Player, GameProgress, Item, PlayerItem, QuickSlot, CraftingRecipe, Dungeon, Monster, Guild, Quest
 from flask_migrate import Migrate
+from settings import config
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-}
+app.config.from_object(config['development'])
+
 db.init_app(app)
 migrate = Migrate(app, db)
 
