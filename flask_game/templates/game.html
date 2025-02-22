@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html data-bs-theme="dark">
+<head>
+    <title>Dungeon Adventure</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/dark-hive/jquery-ui.css">
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div style="position: fixed; top: 10px; right: 10px; z-index: 1000;">
+        <a href="/download" class="btn btn-primary">Download Project</a>
+    </div>
+    <div class="container-fluid game-wrapper py-3">
+        <!-- Quick Slots Bar (Always Visible) -->
+        <div id="quick-slots-bar" class="mb-3">
+            <div class="quick-slots-grid">
+                {% for slot in player.quick_slots %}
+                    <div class="quick-slot" data-slot-number="{{ slot.slot_number }}">
+                        {% if slot.item %}
+                            <div class="inventory-slot" 
+                                 data-item-id="{{ slot.item.id }}"
+                                 data-item-type="{{ slot.item.type }}"
+                                 data-toggle="tooltip"
+                                 title="{{ slot.item.description }}">
+                                <img src="{{ url_for('static', filename=slot.item.image_url) }}" alt="{{ slot.item.name }}">
+                                {% if slot.item.type in ['weapon', 'shield'] %}
+                                    <div class="durability-bar">
+                                        <div class="durability-fill" style="width: {{ (slot.item.current_durability / slot.item.max_durability) * 100 }}%"></div>
+                                    </div>
+                                {% endif %}
+                                {% if slot.item.quantity > 1 %}
+                                    <span class="item-quantity">x{{ slot.item.quantity }}</span>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="empty-slot">
+                                <span class="slot-number">{{ slot.slot_number }}</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Add this new section after the quick-slots-bar div -->
+        <div class="quick-use-buttons">
+            {% for item in player.quick_use_items %}
+                <div class="quick-use-button" 
+                     data-item-id="{{ item.id }}"
+                     data-toggle="tooltip"
+                     title="{{ item.name }}">
+                    <img src="{{ url_for('static', filename=item.image_url) }}" alt="{{ item.name }}">
+                    <span class="quick-use-count">{{ item.quantity }}</span>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div id="inventory-controls" class="mb-3">
+            <div class="btn-group mb-2">
+                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                    Sort By
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item sort-inventory" data-sort="name">Name</a></li>
+                    <li><a class="dropdown-item sort-inventory" data-sort="rarity">Rarity</a></li>
+                    <li><a class="dropdown-item sort-inventory" data-sort="type">Type</a></li>
+                    <li><a class="dropdown-item sort-inventory" data-sort="quality">Quality</a></li>
+                </ul>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                    Filter
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item filter-inventory" data-filter="all">All Items</a></li>
+                    <li><a class="dropdown-item filter-inventory" data-filter="weapon">Weapons</a></li>
+                    <li><a class="dropdown-item filter-inventory" data-filter="potion">Potions</a></li>
+                    <li><a class="dropdown-item filter-inventory" data-filter="shield">Shields</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="row h-100">
+            <div class="col-12 mx-auto">
+                <div id="game-container" class="card bg-dark h-100">
+                    <div class="card-body d-flex flex-column">
+                        <div id="scene-image" class="mb-4">
+                            {% if scene.image %}
+                                <img src="{{ url_for('static', filename='images/' + scene.image) }}" 
+                                     class="img-fluid rounded" alt="Scene Image">
+                            {% endif %}
+                        </div>
+                        <div id="game-area" class="flex-grow-1">
+                            <div id="story-text" class="mb-4">{{ scene.text }}</div>
+                            <div id="options" class="d-grid gap-3">
+                                {% for option in scene.options %}
+                                    <button class="btn btn-dark" type="submit" name="option" value="{{ option.text }}">{{ option.text }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <!-- Combat Mode Toggle -->
+                        <button id="toggle-combat" class="btn btn-danger mb-3">
+                            <i class="fas fa-sword"></i> Toggle Combat Mode
+                        </button>
+                        <!-- Inventory Button -->
+                        <button id="toggle-inventory" class="btn btn-secondary mb-3">
+                            <i class="fas fa-backpack"></i> Open Inventory
+                        </button>
+                        <!-- Inventory Panel -->
+                        <div id="inventory-panel" class="inventory-panel" style="display: none;">
+                            <div class="inventory-categories mb-3">
+                                <button class="btn btn-dark active" data-type="all">All</button>
+                                <button class="btn btn-dark" data-type="weapon">Weapons</button>
+                                <button class="btn btn-dark" data-type="potion">Potions</button>
+                                <button class="btn btn-dark" data-type="shield">Shields</button>
+                            </div>
+                            <div class="inventory-grid">
+                                {% for item in player.inventory %}
+                                    <div class="inventory-slot" 
+                                         data-item-id="{{ item.id }}"
+                                         data-item-type="{{ item.type }}"
+                                         data-toggle="tooltip"
+                                         title="{{ item.description }}"
+                                         data-rarity="{{ item.rarity }}">
+                                        <img src="{{ url_for('static', filename=item.image_url) }}" alt="{{ item.name }}">
+                                        {% if item.type in ['weapon', 'shield'] %}
+                                            <div class="durability-bar">
+                                                <div class="durability-fill" style="width: {{ (item.current_durability / item.max_durability) * 100 }}%"></div>
+                                            </div>
+                                        {% endif %}
+                                        {% if item.quantity > 1 %}
+                                            <span class="item-quantity">x{{ item.quantity }}</span>
+                                        {% endif %}
+                                        {% if item.equipped %}
+                                            <span class="equipped-marker"><i class="fas fa-check"></i></span>
+                                        {% endif %}
+                                        {% if item.is_favorite %}
+                                            <span class="favorite-marker"><i class="fas fa-star"></i></span>
+                                        {% endif %}
+                                        {% if item.hotkey %}
+                                            <span class="hotkey-marker">{{ item.hotkey }}</span>
+                                        {% endif %}
+                                        <div class="item-rarity-indicator {{ item.rarity }}"></div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div id="stats" class="mt-auto border-top pt-3">
+                            <div class="row text-center">
+                                <div class="col-4">
+                                    <p><i class="fas fa-star"></i> Points: <span id="player-points">{{ player.points }}</span></p>
+                                </div>
+                                <div class="col-4">
+                                    <p><i class="fas fa-backpack"></i> Items: <span id="player-inventory">{{ player.inventory|length }}/{{ player.inventory_slots }}</span></p>
+                                </div>
+                                <div class="col-4">
+                                    <p><i class="fas fa-sword"></i> Weapon: <span id="player-weapon">{{ player.current_weapon }}</span></p>
+                                </div>
+                                <div class="col-4">
+                                    <p><i class="fas fa-weight-hanging"></i> Weight: <span id="player-weight">{{ player.current_weight }}/{{ player.carrying_capacity }}</span></p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Add buttons for Guild Shop and Crafting -->
+                        <button id="open-guild-shop" class="btn btn-primary mb-3">
+                            <i class="fas fa-store"></i> Guild Shop
+                        </button>
+                        <button id="open-crafting" class="btn btn-primary mb-3">
+                            <i class="fas fa-hammer"></i> Crafting
+                        </button>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Add this modal for the Guild Shop -->
+        <div class="modal fade" id="guildShopModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content bg-dark">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Guild Shop</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="guild-shop-grid">
+                            <!-- Items will be loaded here dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add this modal for Crafting -->
+        <div class="modal fade" id="craftingModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content bg-dark">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Crafting</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="crafting-recipes-grid">
+                            <!-- Recipes will be loaded here dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <form action="/scene" method="POST">
+        <input type="hidden" name="scene" id="currentScene" value="{{ scene.text }}">
+        <button type="submit" style="display: none;"></button>
+    </form>
+    <script>
+        $(document).ready(function() {
+            // Initialize tooltips
+            $('[data-toggle="tooltip"]').tooltip();
+
+            // Game navigation
+            $("#options button").click(function() {
+                $("#currentScene").val($(this).val());
+                $("button[type='submit']").click();
+            });
+
+            // Toggle inventory panel
+            $("#toggle-inventory").click(function() {
+                $("#inventory-panel").slideToggle();
+            });
+
+            // Toggle combat mode
+            $("#toggle-combat").click(function() {
+                $.post('/toggle_combat', function(response) {
+                    $('body').toggleClass('in-combat', response.in_combat);
+                });
+            });
+
+            // Filter inventory items
+            $(".inventory-categories button").click(function() {
+                $(".inventory-categories button").removeClass("active");
+                $(this).addClass("active");
+
+                const type = $(this).data("type");
+                if (type === "all") {
+                    $(".inventory-slot").show();
+                } else {
+                    $(".inventory-slot").hide();
+                    $(`.inventory-slot[data-item-type="${type}"]`).show();
+                }
+            });
+
+            // Handle item clicks (use or equip)
+            $(".inventory-slot").click(function() {
+                const itemId = $(this).data("item-id");
+                const itemType = $(this).data("item-type");
+                const slot = $(this);
+
+                if (itemType === "potion") {
+                    slot.addClass('using');
+                    setTimeout(() => slot.removeClass('using'), 300);
+                    $.get(`/use_item/${itemId}`).done(function(response) {
+                        if (response.success) {
+                            location.reload();  // Refresh to update inventory
+                        }
+                    });
+                } else {
+                    $.get(`/equip_item/${itemId}`).done(function(response) {
+                        if (response.success) {
+                            location.reload();  // Refresh to update equipped items
+                        }
+                    });
+                }
+            });
+
+            // Drag and drop for quick slots
+            $(".inventory-slot").draggable({
+                helper: "clone",
+                zIndex: 100,
+                revert: "invalid",
+                start: function(event, ui) {
+                    $(ui.helper).addClass('dragging');
+                },
+                stop: function(event, ui) {
+                    $(ui.helper).removeClass('dragging');
+                }
+            });
+
+            $(".quick-slot").droppable({
+                accept: ".inventory-slot",
+                drop: function(event, ui) {
+                    const itemId = ui.draggable.data("item-id");
+                    const slotNumber = $(this).data("slot-number");
+
+                    $.get(`/set_quick_slot/${itemId}/${slotNumber}`).done(function(response) {
+                        if (response.success) {
+                            location.reload();  // Refresh to update quick slots
+                        }
+                    });
+                }
+            });
+
+            // Sorting inventory
+            $(".sort-inventory").click(function() {
+                const sortBy = $(this).data("sort");
+                $.get(`/inventory/sort/${sortBy}`, function(response) {
+                    if (response.success) {
+                        refreshInventoryDisplay(response.inventory);
+                    }
+                });
+            });
+
+            // Filtering inventory
+            $(".filter-inventory").click(function() {
+                const filter = $(this).data("filter");
+                $.get(`/inventory/filter/${filter}`, function(response) {
+                    if (response.success) {
+                        refreshInventoryDisplay(response.inventory);
+                    }
+                });
+            });
+
+            // Guild Shop
+            $("#open-guild-shop").click(function() {
+                $.get('/guild/shop', function(response) {
+                    if (response.success) {
+                        let html = '';
+                        response.items.forEach(item => {
+                            html += `
+                                <div class="shop-item ${item.rarity}">
+                                    <img src="${item.image_url}" alt="${item.name}">
+                                    <div class="shop-item-details">
+                                        <h6>${item.name}</h6>
+                                        <p>${item.description}</p>
+                                        <p class="points-cost">${item.guild_price} points</p>
+                                        <button class="btn btn-primary buy-item" data-item-id="${item.id}">
+                                            Buy
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        $('.guild-shop-grid').html(html);
+                        $('#guildShopModal').modal('show');
+                    }
+                });
+            });
+
+            // Crafting
+            $("#open-crafting").click(function() {
+                $.get('/crafting/recipes', function(response) {
+                    if (response.success) {
+                        let html = '';
+                        response.recipes.forEach(recipe => {
+                            html += `
+                                <div class="recipe-card">
+                                    <div class="recipe-result">
+                                        <img src="${recipe.result.image_url}" alt="${recipe.result.name}">
+                                        <h6>${recipe.result.name}</h6>
+                                    </div>
+                                    <div class="recipe-ingredients">
+                                        ${recipe.ingredients.map(ing => `
+                                            <div class="ingredient">
+                                                <img src="${ing.item.image_url}" alt="${ing.item.name}">
+                                                <span>x${ing.quantity}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    <button class="btn btn-primary craft-item" data-recipe-id="${recipe.id}">
+                                        Craft (${recipe.points_reward} points)
+                                    </button>
+                                </div>
+                            `;
+                        });
+                        $('.crafting-recipes-grid').html(html);
+                        $('#craftingModal').modal('show');
+                    }
+                });
+            });
+
+            // Buying items
+            $(document).on('click', '.buy-item', function() {
+                const itemId = $(this).data('item-id');
+                $.get(`/guild/purchase/${itemId}`, function(response) {
+                    if (response.success) {
+                        location.reload(); // Refresh to update inventory
+                    } else {
+                        alert(response.error);
+                    }
+                });
+            });
+
+            // Crafting items
+            $(document).on('click', '.craft-item', function() {
+                const recipeId = $(this).data('recipe-id');
+                $.get(`/crafting/craft/${recipeId}`, function(response) {
+                    if (response.success) {
+                        location.reload(); // Refresh to update inventory
+                    } else {
+                        alert(response.error);
+                    }
+                });
+            });
+
+            // Toggle favorite
+            $(document).on('dblclick', '.inventory-slot', function() {
+                const itemId = $(this).data('item-id');
+                $.get(`/inventory/toggle_favorite/${itemId}`, function(response) {
+                    if (response.success) {
+                        location.reload(); // Refresh to update inventory
+                    }
+                });
+            });
+
+            // Set hotkey
+            $(document).on('keydown', function(e) {
+                if ($('.inventory-slot:hover').length) {
+                    const itemId = $('.inventory-slot:hover').data('item-id');
+                    const key = String.fromCharCode(e.which);
+                    if (/[1-9]/.test(key)) {
+                        $.get(`/inventory/set_hotkey/${itemId}/${key}`, function(response) {
+                            if (response.success) {
+                                location.reload(); // Refresh to update inventory
+                            }
+                        });
+                    }
+                }
+            });
+
+            // Quick Use Button functionality
+            $('.quick-use-button').click(function() {
+                const itemId = $(this).data('item-id');
+                const button = $(this);
+
+                $.get(`/use_item/${itemId}`).done(function(response) {
+                    if (response.success) {
+                        // Add using animation
+                        button.addClass('using');
+                        setTimeout(() => button.removeClass('using'), 300);
+
+                        // Update quantity
+                        const countSpan = button.find('.quick-use-count');
+                        let newCount = parseInt(countSpan.text()) - 1;
+                        if (newCount <= 0) {
+                            button.fadeOut(300, function() {
+                                $(this).remove();
+                            });
+                        } else {
+                            countSpan.text(newCount);
+                        }
+                    }
+                });
+            });
+
+            // Add visual feedback for inventory interactions
+            function addItemToInventory(item) {
+                const newSlot = $(`
+                    <div class="inventory-slot adding" 
+                         data-item-id="${item.id}"
+                         data-item-type="${item.type}">
+                        <img src="${item.image_url}" alt="${item.name}">
+                        <span class="item-quantity">x${item.quantity}</span>
+                    </div>
+                `);
+
+                $('.inventory-grid').append(newSlot);
+                setTimeout(() => newSlot.removeClass('adding'), 300);
+            }
+
+
+            function refreshInventoryDisplay(inventory) {
+                const inventoryGrid = $('.inventory-grid');
+                inventoryGrid.empty();
+
+                inventory.forEach(item => {
+                    const slot = $(`
+                        <div class="inventory-slot" 
+                             data-item-id="${item.id}"
+                             data-item-type="${item.type}"
+                             data-toggle="tooltip"
+                             title="${item.description}"
+                             data-rarity="${item.rarity}">
+                            <img src="${item.image_url}" alt="${item.name}">
+                            ${item.type in ['weapon', 'shield'] ? `
+                                <div class="durability-bar">
+                                    <div class="durability-fill" style="width: ${(item.current_durability / item.max_durability) * 100}%"></div>
+                                </div>
+                            ` : ''}
+                            ${item.quantity > 1 ? `
+                                <span class="item-quantity">x${item.quantity}</span>
+                            ` : ''}
+                            ${item.equipped ? `
+                                <span class="equipped-marker"><i class="fas fa-check"></i></span>
+                            ` : ''}
+                            ${item.is_favorite ? `
+                                <span class="favorite-marker"><i class="fas fa-star"></i></span>
+                            ` : ''}
+                            ${item.hotkey ? `
+                                <span class="hotkey-marker">${item.hotkey}</span>
+                            ` : ''}
+                            <div class="item-rarity-indicator ${item.rarity}"></div>
+                        </div>
+                    `);
+                    inventoryGrid.append(slot);
+                });
+
+                // Reinitialize tooltips
+                $('[data-toggle="tooltip"]').tooltip();
+            }
+
+            function getEquippedItem() {
+                //  Replace this with your actual logic to get the equipped item.
+                //  This is a placeholder.  You'll likely need to access player data from a global variable or from the server.
+                const equippedItemId =  player.equipped_item_id; //Get equipped item id from player object
+                if(equippedItemId){
+                  const equippedItem = player.inventory.find(item => item.id === equippedItemId);
+                  return equippedItem;
+                }
+                return null;
+            }
+
+
+            function getCurrentDungeonId() {
+                // Replace this with your actual logic to get the current dungeon ID.
+                return player.current_dungeon_id; // Get current dungeon Id from player object
+            }
+
+            function updatePlayerPosition(newPosition) {
+                // Replace this with your actual logic to update the player's position on the UI.
+                //  For example, you might update the scene or display a message.
+                alert("You have teleported to " + newPosition);
+                location.reload(); //This is placeholder for updating UI
+            }
+
+            function handleTeleport() {
+                if (!player.in_combat) {
+                    $.ajax({
+                        url: '/teleport',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({}),
+                        success: function(response) {
+                            if (response.success) {
+                                // Update player position
+                                updatePlayerPosition(response.new_position);
+                            } else {
+                                alert(response.error);
+                            }
+                        }
+                    });
+                }
+            }
+
+            // Bind left click when teleporter is equipped
+            $(document).on('mousedown', function(e) {
+                if (e.which === 1) { // Left click
+                    const equippedItem = getEquippedItem();
+                    if (equippedItem && equippedItem.name === 'Teleporter') {
+                        handleTeleport();
+                    }
+                }
+            });
+
+            // Check for return points every second when in dungeon
+            setInterval(function() {
+                if (player.current_scene.includes('dungeon')) {
+                    $.ajax({
+                        url: '/check_return_point',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            dungeon_id: getCurrentDungeonId()
+                        }),
+                        success: function(response) {
+                            if (response.success && response.teleported) {
+                                // Update UI for teleport to guild
+                                updatePlayerPosition(response.new_position);
+                            }
+                        }
+                    });
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
