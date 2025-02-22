@@ -939,3 +939,137 @@ def download_project():
         as_attachment=True,
         download_name='flask_game.zip'
     )
+
+from flask import Flask, render_template, request, session
+from flask_sqlalchemy import SQLAlchemy
+import logging
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///game.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
+
+from models import PlayerItem, CraftingRecipe, CraftingIngredient, RecipeMaterial, Guild, Quest
+
+def get_or_create_player():
+    try:
+        player = Player.query.filter_by(id=session.get('player_id')).first()
+        if not player:
+            player = Player()
+            db.session.add(player)
+            db.session.commit()
+            session['player_id'] = player.id
+
+        # Initialize player with some items
+        wooden_sword = Item.query.filter_by(name="Wooden Sword").first()
+        if wooden_sword:
+            initial_item = PlayerItem(
+                player_id=player.id,
+                item_id=wooden_sword.id,
+                equipped=True,
+                current_durability=wooden_sword.max_durability
+            )
+            db.session.add(initial_item)
+            db.session.commit()
+
+        initialize_quick_slots(player)
+        return player
+
+    except Exception as e:
+        app.logger.error(f"Error in get_or_create_player: {str(e)}")
+        db.session.rollback()
+        # Create a new session and try again
+        db.session.remove()
+        player = Player()
+        db.session.add(player)
+        db.session.commit()
+        session['player_id'] = player.id
+        return player
+
+from game_materials import MATERIALS, CRAFTING_RECIPES
+
+def initialize_materials():
+    with app.app_context():
+        try:
+            for rarity, items in MATERIALS.items():
+                for item_data in items:
+                    if Item.query.filter_by(name=item_data['name']).first() is None:
+                        item = Item(**item_data)
+                        db.session.add(item)
+            db.session.commit()
+        except Exception as e:
+            app.logger.error(f"Error initializing materials: {str(e)}")
+            db.session.rollback()
+
+def initialize_recipes():
+    with app.app_context():
+        try:
+            for recipe_data in CRAFTING_RECIPES:
+                if CraftingRecipe.query.filter_by(name=recipe_data['name']).first() is None:
+                    result_item = Item.query.filter_by(name=recipe_data['result']['name']).first()
+                    if result_item:
+                        recipe = CraftingRecipe(
+                            name=recipe_data['name'],
+                            result_item_id=result_item.id,
+                            points_reward=recipe_data['points_reward']
+                        )
+                        db.session.add(recipe)
+                        for material in recipe_data['materials']:
+                            mat_item = Item.query.filter_by(name=material['item']).first()
+                            if mat_item:
+                                ingredient = CraftingIngredient(
+                                    recipe=recipe,
+                                    item_id=mat_item.id,
+                                    quantity=material['quantity']
+                                )
+                                db.session.add(ingredient)
+            db.session.commit()
+        except Exception as e:
+            app.logger.error(f"Error initializing recipes: {str(e)}")
+            db.session.rollback()
+
+# Initialize database with items, materials and recipes
+initialize_items()
+initialize_materials()
+initialize_recipes()
+initialize_guild()
+
+@app.route('/')
+def index():
+    try:
+        player = get_or_create_player()
+        if not player:
+            app.logger.error("Failed to get or create player")
+            return "Error loading game", 500
+
+        player_data = player.to_dict()
+        current_scene = player.current_scene
+        return render_template('game.html', 
+                             scene=gameData["scenes"][current_scene],
+                             player=player_data)
+    except Exception as e:
+        app.logger.error(f"Error in index route: {str(e)}")
+        return "Error loading game", 500
+
+@app.route('/scene', methods=['POST'])
+def scene():
+    player = get_or_create_player()
+    currentScene = request.form['scene']
+    selectedOption = request.form['option']
+
+    nextScene = None
+    for option in gameData["scenes"][currentScene]["options"]:
+        if option["text"] == selectedOption:
+            nextScene = option["nextScene"]
+
+            if "points" in option:
+                player.points += option["points"]
+
+            if "weapon" in option:
+                weapon_item = Item.query.filter_by(name=option["weapon"]).first()
+                if weapon_item:
+                    player_item = PlayerItem(player_id=player.id, item_id=weapon_item.id, current_durability=weapon_item.max_durability)
+                    db.session.add(player_item)
