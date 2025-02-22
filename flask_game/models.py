@@ -254,6 +254,17 @@ class PlayerItem(db.Model):
         })
         return item_dict
 
+player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False)
+    slot_number = db.Column(db.Integer, nullable=False)  # 1-5 for quick slots
+    item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
+
+    item = db.relationship('Item')
+
+    def to_dict(self):
+        return {
+            'slot_number': self.slot_number,
+            'item': self.item.to_dict() if self.item else None
+
 class QuickSlot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False)
@@ -269,6 +280,21 @@ class QuickSlot(db.Model):
         }
 
 class CraftingRecipe(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    result_item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
+    required_level = db.Column(db.Integer, default=1)
+    points_reward = db.Column(db.Integer, default=10)
+    required_skill_id = db.Column(db.Integer, db.ForeignKey('skill.id'))  # New: Required crafting skill
+    difficulty = db.Column(db.Integer, default=1)  # 1-10 scale
+    crafting_time = db.Column(db.Float, default=1.0)  # Time in seconds
+    crafting_animation = db.Column(db.String(100))  # Animation to play while crafting
+
+    result_item = db.relationship('Item', foreign_keys=[result_item_id])
+    required_skill = db.relationship('Skill', foreign_keys=[required_skill_id])
+    ingredients = db.relationship('CraftingIngredient', backref='recipe', lazy=True)
+    materials = db.relationship('RecipeMaterial', backref='recipe', lazy=True)
+    
+    
     id = db.Column(db.Integer, primary_key=True)
     result_item_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=False)
     required_level = db.Column(db.Integer, default=1)
@@ -298,7 +324,6 @@ class RecipeMaterial(db.Model):
     quantity = db.Column(db.Integer, default=1)
 
     material = db.relationship('Material')
-
 
 class Guild(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -335,6 +360,11 @@ class Quest(db.Model):
     is_completed = db.Column(db.Boolean, default=False)
 
     reward_item = db.relationship('Item')
+
+    id = db.Column(db.Integer, primary_key=True)
+    guild_id = db.Column(db.Integer, db.ForeignKey('guild.id'), nullable=False)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
 
     def to_dict(self):
         return {
